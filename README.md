@@ -1,4 +1,4 @@
-
+![R](https://img.shields.io/badge/R-276DC3?style=for-the-badge&logo=r&logoColor=white)
 # Overview
 This project predicts housing prices using a linear regression (lm) model, incorporating feature engineering, cross-validation, and regularization techniques such as Lasso Regression and Ridge Regression. The workflow ensures a robust and interpretable model with a comprehensive evaluation process, including residual analysis.
 
