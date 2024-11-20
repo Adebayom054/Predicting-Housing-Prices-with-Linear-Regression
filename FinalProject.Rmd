@@ -1,0 +1,398 @@
+---
+title: "FinalProject"
+author: "Maryam Adebayo"
+date: "`r Sys.Date()`"
+output: html_document
+
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r setup, include=FALSE}
+library(car)
+library(glmnet)
+library(ggplot2)
+library(dplyr)
+library(summarytools)
+library(corrplot)
+library(tidyverse)
+library(caret)
+```
+
+
+
+1
+```{r setup, include=FALSE}
+hd <- read.csv("C:/Maryam/Project/American_Housing_Data_20231209 - American_Housing_Data_20231209.csv")
+
+View(hd)
+
+# Converting these variables to factors 
+hd$Zip.Code <- as.factor(hd$Zip.Code)
+hd$City <- as.factor(hd$City)
+hd$State <- as.factor(hd$State)
+hd$County <- as.factor(hd$County)
+
+summary(hd)
+```
+
+
+
+
+2
+```{r setup, include=FALSE}
+#Finding missing values
+rows_with_na <- apply(hd, 1, function(row) any(is.na(row)))
+x <- hd[rows_with_na,]
+print(x)
+
+#Deleting row with missing value
+hd <- hd[-27787,]
+
+#Filling row with a similar value above it
+hd$Zip.Code.Population[27786] <- 565
+hd$Zip.Code.Density[27786] <- 41.0
+hd$Median.Household.Income[is.na(hd$Median.Household.Income)] <- 106290
+
+
+#Deleting Useless Columns
+cols.dont.want <- c("Address")
+hd <- hd[, ! names(hd) %in% cols.dont.want, drop = F]
+```
+
+
+3
+```{r setup, include=FALSE}
+#library(car)
+model <- lm(Price ~ ., data = hd)
+#summary(model)
+
+residuals <- resid(model)
+MSE <- mean(residuals^2)
+MSE
+
+#VIF - Use VIF early to identify multicollinearity issues. Remove highly collinear predictors to improve model interpretability and prevent instability in regression coefficients.
+
+# cant do vif on categorical variables
+vif(model)
+```
+
+
+4
+```{r setup, include=TRUE}
+# When to use Lasso:
+# Large datasets with many features 
+# Situations where understanding which features are most important is crucial 
+# When aiming for a simpler model with fewer variables 
+
+# When to use Ridge:
+# Datasets with high multicollinearity 
+# When stability and robustness are more important than feature selection
+
+
+#Lasso regression
+
+#Results: 
+# - zip code lack predictive power because most of the zip codes were assigned 0 coeffcicents
+# - city is much better becuse it reduces simensionality while retaining clocation-based insights
+
+
+# Baths, Living space, zip code den, income,CityBeverly Hills, CityDenver,CityFresno,CityLa Jolla, CityLos Angeles,CityNashville,CityPacific Palisades,CitySan Francisco,CitySeattle,CityWashington,CityWest Hollywood,CityWichita
+
+
+#install.packages("glmnet")
+library(glmnet)
+set.seed(125)
+x <- model.matrix(Price ~ ., data = hd)
+y <- hd$Price
+fit.lasso = glmnet(x,y)
+plot(fit.lasso, xvar="lambda", label=TRUE)
+cv.lasso <- cv.glmnet(x,y)
+plot(cv.lasso)
+coef(cv.lasso)
+```
+
+
+
+
+5
+```{r setup, include=False}
+#Exploratory Analysis
+library(ggplot2)
+library(dplyr)
+#install.packages("summarytools")
+library(summarytools)
+
+
+selected_cities <- c("Beverly Hills", "Denver", "Fresno", "La Jolla", 
+                     "Los Angeles", "Nashville", "Pacific Palisades", 
+                     "San Francisco", "Seattle", "Washington", 
+                     "West Hollywood", "Wichita")
+
+# Subset the data to include only rows with the selected cities
+subset_data <- subset(hd, City %in% selected_cities)
+
+
+# Basic Summary Statistics for Key Columns
+summary_stats <- summary(subset_data %>%
+                           select(Price, Baths, Living.Space, Zip.Code.Density, Median.Household.Income))
+print(summary_stats)
+
+
+# Histograms to Understand Distributions
+par(mfrow=c(2, 2))  # Arrange plots in 2x2 grid
+hist(hd$Price, main="Price Distribution", xlab="Price", col="skyblue", breaks=50)
+hist(hd$Baths, main="Baths Distribution", xlab="Baths", col="purple", breaks=10)
+hist(hd$Living.Space, main="Living Space Distribution", xlab="Living Space (sq ft)", col="green", breaks=50)
+hist(hd$Median.Household.Income, main="Median Household Income Distribution", xlab="Income", col="skyblue", breaks=50)
+
+# Scatter Plots for Relationships
+sp <- ggplot(hd, aes(x=Living.Space, y=Price)) + 
+  geom_point(alpha=0.3) + 
+  theme_minimal() +
+  labs(title="Living Space vs Price", x="Living Space (sq ft)", y="Price")
+
+sp3 <- ggplot(hd, aes(x=Baths, y=Price)) + 
+  geom_point(alpha=0.3) + 
+  theme_minimal() +
+  labs(title="Baths vs Price", x="Number of Baths", y="Price")
+
+# Correlation Analysis
+numeric_data <- numeric_data <- hd %>%
+  select(Price, Baths, Living.Space, Zip.Code.Density, Median.Household.Income) %>%
+  na.omit()
+cor_matrix <- cor(numeric_data)
+print(cor_matrix)
+
+# Visualizing Correlation Matrix
+library(corrplot)
+Corr_mat <- corrplot(cor_matrix, method="circle", type="upper", tl.col="black", tl.cex=0.8)
+
+# Boxplots
+ggplot(hd, aes(y=Price, x=as.factor(Baths))) + 
+  geom_boxplot() + 
+  theme_minimal() + 
+  labs(title="Price Distribution by Number of Baths", x="Baths", y="Price")
+
+ggplot(subset_data, aes(x = City, y = Price)) +
+  geom_boxplot(aes(color = City), outlier.colour = "red", outlier.size = 2) +
+  labs(title = "Price Distribution by City",
+       x = "City",
+       y = "Price ($)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
+6
+```{r setup, include=FALSE}
+#New Model after Lasso
+model <- lm(log(Price) ~ Baths + Living.Space + Zip.Code.Density + 
+    Median.Household.Income + City, data = subset_data)
+summary(model)
+
+
+# Complete Second-order polynomial for Living.Space, Baths, and Household Income
+model_poly <- lm(log(Price) ~ poly(Living.Space, 2) + poly(Baths, 2) + poly(Median.Household.Income, 2),  
+                 data = subset_data)
+                 
+summary(model_poly)
+
+```
+
+
+
+
+
+7
+```{r setup, include=FALSE}
+#Ridge Regression
+
+library(glmnet)
+
+X <- model.matrix(log(Price) ~ poly(Living.Space, 2) + poly(Baths, 2) + poly(Median.Household.Income, 2), data = hd)
+y <- hd$Price
+
+
+# Fit ridge regression
+ridge_model <- glmnet(X, y, alpha = 0)
+print(ridge_model)
+cv_ridge <- cv.glmnet(X, y, alpha = 0)
+
+# Optimal lambda
+best_lambda <- cv_ridge$lambda.min
+cat("Optimal lambda:", best_lambda, "\n")
+
+# Plot cross-validation results
+plot(cv_ridge)
+ridge_final <- glmnet(X, y, alpha = 0, lambda = best_lambda)
+coef(ridge_final)
+
+
+# Predictions on training data
+predicted <- predict(ridge_final, newx = X)
+
+# Example: Print first few predictions
+head(predicted)
+
+# Calculate RMSE
+rmse <- sqrt(mean((y - predicted)^2))
+cat("RMSE:", rmse, "\n")
+
+# Example: R-squared
+r_squared <- 1 - sum((y - predicted)^2) / sum((y - mean(y))^2)
+cat("R-squared:", r_squared, "\n")
+
+
+# Ridge may have overly shrunk my model
+
+```
+
+
+8
+```{r setup, include=FALSE}
+#Foward Selection
+model <- lm(formula = log(Price) ~ poly(Living.Space, 2) + poly(Baths, 2) + poly(Median.Household.Income, 2), data = hd)
+step_model <- step(model, direction = "both")
+summary(step_model)
+```
+
+
+
+
+
+
+9
+```{r setup, include=TRUE}
+#Lasso regression
+
+#install.packages("glmnet")
+#library(glmnet)
+set.seed(125)
+x <- model.matrix(log(Price) ~ poly(Living.Space, 2) + poly(Baths, 2) + poly(Median.Household.Income, 2), data = hd)
+y <- hd$Price
+fit.lasso = glmnet(x,y)
+plot(fit.lasso, xvar="lambda", label=TRUE)
+cv.lasso <- cv.glmnet(x,y)
+plot(cv.lasso)
+coef(cv.lasso)
+
+
+
+# Model after lasso: log(Price) ~ poly(Living.Space) + poly(Baths) + poly(Median.Household.Income), data = hd)
+```
+
+10
+```{r setup, include=FALSE}
+#Elastic Net Regression
+set.seed(123)  # Set a seed for reproducibility
+
+# Create a training index (e.g., 70% training, 30% testing)
+train <- sample(1:nrow(hd), size = 0.7 * nrow(hd))
+
+# Define training and testing sets
+x <- model.matrix(log(Price) ~ poly(Living.Space, 2) + poly(Baths, 2) + poly(Median.Household.Income, 2), data = hd)
+y <- log(hd$Price)
+
+x_train <- x[train, ]
+y_train <- y[train]
+
+x_test <- x[-train, ]
+y_test <- y[-train]
+
+# Fit Elastic Net model
+elastic_net <- glmnet(x_train, y_train, alpha = 0.5)
+
+# Cross-validation to find optimal lambda
+cv_elastic_net <- cv.glmnet(x_train, y_train, alpha = 0.5)
+
+# Plot cross-validation curve
+plot(cv_elastic_net)
+
+# Optimal lambda
+lambda_best <- cv_elastic_net$lambda.min
+cat("Optimal lambda:", lambda_best, "\n")
+
+# Predict on test set
+predictions <- predict(elastic_net, s = lambda_best, newx = x_test)
+
+# Calculate RMSE
+rmse <- sqrt(mean((y_test - predictions)^2))
+cat("RMSE:", rmse, "\n")
+
+
+# Coefficients for the best model
+coef_elastic_net <- coef(elastic_net, s = lambda_best)
+print(coef_elastic_net)
+```
+
+
+
+
+11
+```{r setup, include=FALSE}
+# CV Validation
+
+library(tidyverse)
+#install.packages("caret")
+library(caret)
+#install.packages("datarium")
+set.seed(125)
+train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+model <- train(log(Price) ~ poly(Living.Space, 2) + poly(Baths, 2) + poly(Median.Household.Income, 2), data = hd, method = "lm", trControl = train_control)
+print(model)
+
+
+Results
+Linear Regression
+
+39980 samples
+    3 predictor
+
+No pre-processing
+Resampling: Cross-Validated (10 fold, repeated 3 times)
+Summary of sample sizes: 35982, 35982, 35982, 35982, 35981, 35983, ...
+Resampling results:
+
+  RMSE       Rsquared   MAE
+  0.5287774  0.5815955  0.3942567
+
+Tuning parameter 'intercept' was held constant at a value of TRUE
+```
+
+
+
+
+12
+```{r setup, include=TRUE}
+#Residual analysis
+model <- lm(log(Price) ~ poly(Living.Space, 2) + poly(Baths, 2) + poly(Median.Household.Income, 2), data = hd)
+residuals <- resid(model)
+#detecting fit
+yhat <- fitted(model)
+plot(yhat, residuals, xlab = "Predicted Values", ylab= "residuals")
+abline(h = 0, col = "red")
+
+MSE <- mean(residuals^2)
+#detecting normality
+hist(freq = TRUE,residuals, main = "Histogram of Residuals",
+     xlab = "Residuals", ylab = "Frequency")
+abline(h = 0, col = "red")
+```
+
+
+
+
+Final  Model
+
+```{r setup, include=FALSE}
+model <- lm(formula = log(Price) ~ poly(Living.Space, 2) + poly(Baths, 2) + poly(Median.Household.Income, 2), data = hd)
+summary(model)
+```
+
